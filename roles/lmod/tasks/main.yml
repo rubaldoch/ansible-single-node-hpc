@@ -1,0 +1,57 @@
+- name: Install apps
+  apt:
+    name:
+      - bzip2
+      - build-essential
+      - dejagnu
+      - tcl-dev
+- name: Download lua source
+  ansible.builtin.get_url:
+    url: https://sourceforge.net/projects/lmod/files/lua-5.1.4.9.tar.bz2
+    dest: /tmp/
+- name: Uncompress lua source
+  ansible.builtin.shell: tar xf lua-5.1.4.9.tar.bz2
+  args:
+    chdir: /tmp/
+- name: Create a directory /opt/apps
+  ansible.builtin.file:
+    path: /opt/apps
+    state: directory
+- name: Install lua
+  ansible.builtin.shell: |
+    ./configure --prefix=/opt/apps/lua/5.1.4.9
+    make; make install
+  args:
+    chdir: /tmp/lua-5.1.4.9
+- name: Create lua symlink
+  ansible.builtin.file:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    state: link
+  with_items:
+    - src: /opt/apps/lua/5.1.4.9
+      dest: /opt/apps/lua/lua
+    - src: /opt/apps/lua/lua/bin/lua
+      dest: /usr/local/bin/lua
+    - src: /opt/apps/lua/lua/bin/luac
+      dest: /usr/local/bin/luac
+- name: Download and uncompress module source
+  ansible.builtin.unarchive:
+    src: https://sitsa.dl.sourceforge.net/project/lmod/Lmod-8.7.tar.bz2
+    dest: /tmp/
+    remote_src: yes
+- name: Install modules
+  ansible.builtin.shell: |
+    ./configure --prefix=/opt/apps
+    make install
+  args:
+    chdir: /tmp/Lmod-8.7
+- name: Create mod init files
+  ansible.builtin.file:
+    src: /opt/apps/lmod/lmod/init/profile
+    dest: /etc/profile.d/z00_lmod.sh
+    owner: root
+    group: root
+    state: link

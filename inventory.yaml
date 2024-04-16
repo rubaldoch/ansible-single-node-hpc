@@ -1,0 +1,14 @@
+servers:
+  hosts:
+    server01:
+      ansible_host: 192.168.122.5
+      ansible_user: ubuntu
+      node_hostname : darwin
+  vars:
+    # LDAP config
+    ldap_organization: Darwin
+    ldap_domain: darwin.pe
+    ldap_dn: dc=darwin,dc=pe
+    ldap_host: localhost
+    ldap_password: alabama
+    ldap_default_user_password: darwin123

@@ -1,0 +1,31 @@
+- name: Install ldapscripts
+  apt:
+    name:
+    - ldapscripts
+- name: Update /etc/ldapscripts/ldapscripts.conf
+  ansible.builtin.lineinfile:
+    path: /etc/ldapscripts/ldapscripts.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+  - { regexp: '#SERVER="ldap://localhost"', line: 'SERVER="ldap://{{ ldap_host }}"' }
+  - { regexp: '#LDAPBINOPTS="-ZZ"', line: 'LDAPBINOPTS="-ZZ"' }
+  - { regexp: 'BINDDN="cn=Manager,dc=example,dc=com"', line: 'BINDDN="cn=admin,{{ ldap_dn }}"' }
+  - { regexp: '#SUFFIX', line: 'SUFFIX="{{ ldap_dn }}"' }
+  - { regexp: '#GSUFFIX="ou=Groups"', line: '#GSUFFIX="ou=Groups"' }
+  - { regexp: '#USUFFIX="ou=Users"', line: "USUFFIX='ou=People'" }
+  - { regexp: '#MSUFFIX="ou=Machines"', line: "MSUFFIX='ou=Computers'" }
+  - { regexp: 'PASSWORDGEN="pwgen"', line: 'PASSWORDGEN="echo {{ ldap_default_user_password }}"' }
+  
+- name: Store the cn=admin password in the /etc/ldapscripts/ldapscripts.passwd file
+  shell: |
+    rm -f /etc/ldapscripts/ldapscripts.passwd
+    echo -n "{{ ldap_password }}" > /etc/ldapscripts/ldapscripts.passwd
+  no_log: True
+- name: Change file ownership and make sure it’s only readable by the root local user 
+  ansible.builtin.file:
+    path: /etc/ldapscripts/ldapscripts.passwd
+    owner: root
+    group: root
+    mode: '400'
+

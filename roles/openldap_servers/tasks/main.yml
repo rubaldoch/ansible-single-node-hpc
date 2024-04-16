@@ -1,0 +1,9 @@
+- name: Install Openldap server
+  import_tasks: install_openldap.yml
+
+- name: Set SSL/TLS to Openldap
+  import_tasks: set_openldap_tls.yml
+
+- name: Install and setup ldapscripts
+  import_tasks: install_ldapscripts.yml
+

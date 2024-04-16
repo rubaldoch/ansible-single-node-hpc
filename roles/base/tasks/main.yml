@@ -1,0 +1,25 @@
+- debug: msg="{{ ansible_user }}"
+- name: Set timezone to America/Lima
+  community.general.timezone:
+    name: America/Lima
+- name: Set a hostname
+  ansible.builtin.hostname:
+    name: "{{ node_hostname }}"
+- name: Here we are checking ansible_hostname
+  debug:
+    msg: "hostname is {{ ansible_hostname }}"
+- name: Here we are checking ansible_host
+  debug:
+    msg: "host ip is {{ ansible_host }}"
+- name: Update /etc/hosts
+  ansible.builtin.lineinfile:
+    dest: /etc/hosts
+    regexp: '.*{{ item }}$'
+    line: "{{ hostvars[item].ansible_host }}\t{{ hostvars[item].ansible_hostname }}"
+    state: present
+  when: hostvars[item].ansible_hostname is defined
+  with_items: "{{ groups.all }}"
+  register: host_changed
+- name: Reboot to apply changes
+  ansible.builtin.reboot:
+  when: host_changed.changed

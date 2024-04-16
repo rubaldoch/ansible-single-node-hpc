@@ -1,0 +1,32 @@
+- name: Install SSSD
+  apt:
+    name:
+    - sssd-ldap
+    - ldap-utils
+
+- name: Create the /etc/sssd/sssd.conf configuration file
+  ansible.builtin.template:
+    src: files/sssd.conf.j2
+    dest: /etc/sssd/sssd.conf
+    owner: root
+    group: root
+    mode: '0600'
+  notify: restart_sssd
+- name: Automatic home directory creation
+  shell: pam-auth-update --enable mkhomedir
+  register: result
+- debug: msg="{{ result.stdout }}"
+- name: Edit /usr/share/pam-configs/mkhomedir to have private /homes
+  shell: |
+    sed -i -e "s/pam_mkhomedir.so$/pam_mkhomedir.so umask=0077/" /usr/share/pam-configs/mkhomedir
+    pam-auth-update --package mkhomedir
+  register: result
+- debug: msg="{{ result.stdout }}"
+- name: Test LDAPS
+  become: false
+  shell: ldapwhoami -x -H ldaps://{{ ldap_host }} -D cn=admin,{{ ldap_dn }} -w {{ ldap_password }}
+  register: result
+  no_log: True 
+- debug: msg="{{ result.stdout }}"
+- name: Reboot to apply changes
+  ansible.builtin.reboot:

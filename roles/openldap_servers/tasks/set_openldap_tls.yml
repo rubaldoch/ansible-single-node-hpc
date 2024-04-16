@@ -1,0 +1,88 @@
+- name: Install ldap TLS server apps
+  apt:
+    name:
+    - gnutls-bin
+    - ssl-cert 
+- name: Create a private key for the Certificate Authority
+  shell: certtool --generate-privkey --sec-param High --outfile /etc/ssl/private/ca.{{ ldap_domain }}_key.pem
+- name: Create the template/file /etc/ssl/ca.info to define the CA
+  copy:
+    dest: "/etc/ssl/ca.info"
+    content: |
+      cn = {{ldap_organization}}
+      ca
+      cert_signing_key
+      expiration_days = 3650
+- name: Create the self-signed CA certificate
+  shell: |
+    certtool --generate-self-signed \
+    --load-privkey /etc/ssl/private/ca.{{ ldap_domain }}_key.pem \
+    --template /etc/ssl/ca.info \
+    --outfile /usr/local/share/ca-certificates/ca.{{ ldap_domain }}_cert.crt
+    update-ca-certificates
+  register: result
+- debug: msg="{{ result.stdout }}"
+- name: Make a private key for the server
+  shell: certtool --generate-privkey --sec-param Medium --outfile /etc/ldap/ldap.{{ ldap_domain }}_slapd_key.pem
+  register: result
+- debug: msg="{{ result.stdout }}"
+- name: Create the /etc/ssl/ldap.{{ ldap_domain }}.info file
+  copy:
+    dest: "/etc/ssl/ldap.{{ ldap_domain }}.info"
+    content: |
+      organization =  {{ldap_organization}}
+      cn = {{ ansible_hostname }}
+      tls_www_server
+      encryption_key
+      signing_key
+      expiration_days = 365
+- name: "Create the server’s certificate"
+  shell: |
+    certtool --generate-certificate \
+    --load-privkey /etc/ldap/ldap.{{ ldap_domain }}_slapd_key.pem \
+    --load-ca-certificate /etc/ssl/certs/ca.{{ ldap_domain }}_cert.pem \
+    --load-ca-privkey /etc/ssl/private/ca.{{ ldap_domain }}_key.pem \
+    --template /etc/ssl/ldap.{{ ldap_domain }}.info \
+    --outfile /etc/ldap/ldap.{{ ldap_domain }}_slapd_cert.pem
+    chgrp openldap /etc/ldap/ldap.{{ ldap_domain }}_slapd_key.pem
+    chmod 0640 /etc/ldap/ldap.{{ ldap_domain }}_slapd_key.pem
+
+- name: Create "/tmp/certinfo.ldif" file #TODO: use ldap entry to avoid error when runnig a second time
+  copy:
+    dest: "/tmp/certinfo.ldif"
+    content: |
+      dn: cn=config
+      add: olcTLSCACertificateFile
+      olcTLSCACertificateFile: /etc/ssl/certs/ca.{{ ldap_domain }}_cert.pem
+      -
+      add: olcTLSCertificateFile
+      olcTLSCertificateFile: /etc/ldap/ldap.{{ ldap_domain }}_slapd_cert.pem
+      -
+      add: olcTLSCertificateKeyFile
+      olcTLSCertificateKeyFile: /etc/ldap/ldap.{{ ldap_domain }}_slapd_key.pem
+
+- name: Add the content of "/tmp/certinfo.ldif" to ldap
+  shell: ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/certinfo.ldif
+  register: command_result
+  failed_when: "'No such file or directory' in command_result.stderr"
+- name: Edit /etc/default/slapd to access to LDAPS
+  ansible.builtin.lineinfile:
+    path: /etc/default/slapd
+    regexp: 'SLAPD_SERVICES="ldap:/// ldapi:///"'
+    line: 'SLAPD_SERVICES="ldap:/// ldapi:/// ldaps:///"'
+- name: restart_slapd
+  ansible.builtin.service:
+    name: slapd
+    state: restarted
+- name: Test StartTLS
+  become: false
+  shell: ldapwhoami -x -ZZ -H ldap://{{ ldap_host }} -D cn=admin,{{ ldap_dn }} -w {{ ldap_password }}
+  register: result
+  no_log: True
+- debug: msg="{{ result.stdout }}"
+- name: Test LDAPS
+  become: false
+  shell: ldapwhoami -x -H ldaps://{{ ldap_host }} -D cn=admin,{{ ldap_dn }} -w {{ ldap_password }}
+  register: result
+  no_log: True
+- debug: msg="{{ result.stdout }}"

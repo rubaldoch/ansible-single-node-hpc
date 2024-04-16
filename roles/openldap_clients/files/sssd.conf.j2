@@ -1,0 +1,11 @@
+[sssd]
+config_file_version = 2
+domains = {{ ldap_domain }}
+
+[domain/{{ ldap_domain }}]
+id_provider = ldap
+auth_provider = ldap
+ldap_uri = ldap://{{ ldap_host }}
+cache_credentials = True
+ldap_search_base = {{ ldap_dn }}
+ldap_id_use_start_tls = true

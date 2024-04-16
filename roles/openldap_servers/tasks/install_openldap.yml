@@ -1,0 +1,91 @@
+- name: Install ansible debconf requirements
+  apt:
+    name:
+    - debconf
+    - debconf-utils
+- name: Check debconf for slapd entries
+  shell: (debconf-get-selections | grep -q -s slapd); echo $?
+  register: debconf
+  ignore_errors: yes
+- name: Set openldap omit configuration to "false"
+  ansible.builtin.debconf:
+    name: slapd
+    question: slapd/no_configuration
+    value: 'false'
+    vtype: select
+  when: debconf.stdout == "1"
+- name: Set openldap domain
+  ansible.builtin.debconf:
+    name: slapd
+    question: slapd/domain
+    value: "{{ ldap_domain }}"
+    vtype: string
+  when: debconf.stdout == "1"
+- name: Set openldap organization
+  ansible.builtin.debconf:
+    name: slapd
+    question: shared/organization
+    value: "{{ ldap_organization }}"
+    vtype: string 
+  when: debconf.stdout == "1"
+- name: Set move old database to "false"
+  ansible.builtin.debconf:
+    name: slapd
+    question: slapd/move_old_database
+    value: 'false'
+    vtype: select
+  when: debconf.stdout == "1"
+- name: Set purge database to "false"
+  ansible.builtin.debconf:
+    name: slapd
+    question: slapd/purge_database
+    value: 'false'
+    vtype: select
+  when: debconf.stdout == "1"
+- name: Set openldap password
+  ansible.builtin.debconf:
+    name: slapd
+    question: "{{ item }}"
+    value: "{{ ldap_password }}"
+    vtype: password
+  loop: [
+    "slapd/password1", 
+    "slapd/password2", 
+    "slapd/internal/generated_adminpw",
+    "slapd/internal/adminpw"
+    ]
+  no_log: True
+  when: debconf.stdout == "1"
+- name: Install ldap server apps
+  apt:
+    name:
+    - slapd 
+- name: Update /etc/ldap/ldap.conf
+  ansible.builtin.lineinfile:
+    path: /etc/ldap/ldap.conf
+    line: "{{ item.line }}"
+  loop:
+  - { line: "BASE   {{ ldap_dn }}" }
+  - { line: 'URI   ldap://{{ ldap_host }}' }
+# TODO: use ldap entry to avoid error when runnig a second time
+- name: Create "/tmp/add_content.ldif" file 
+  copy:
+    dest: "/tmp/add_content.ldif"
+    content: |
+      dn: ou=People,{{ ldap_dn }}
+      objectClass: organizationalUnit
+      ou: People
+
+      dn: ou=Groups,{{ ldap_dn }}
+      objectClass: organizationalUnit
+      ou: Groups
+- name: Add the content of "/tmp/add_content.ldif" to ldap           
+  shell: ldapadd -x -D cn=admin,{{ ldap_dn }} -w {{ ldap_password }} -f /tmp/add_content.ldif
+  register: command_result
+  failed_when: "'No such file or directory' in command_result.stderr"
+  no_log: True 
+- name: Verify the authentication
+  shell: ldapwhoami -x -D cn=admin,{{ ldap_dn }} -w {{ ldap_password }}
+  register: result
+  no_log: True 
+- debug: msg="{{ result.stdout }}"
